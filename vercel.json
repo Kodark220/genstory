@@ -1,0 +1,16 @@
+{
+  "framework": "vite",
+  "buildCommand": "cd story-dashboard && npm run build",
+  "outputDirectory": "story-dashboard/dist",
+  "installCommand": "cd story-dashboard && npm install",
+  "rewrites": [
+    {
+      "source": "/api/rpc-bradbury/(.*)",
+      "destination": "https://rpc-bradbury.genlayer.com/$1"
+    },
+    {
+      "source": "/api/studio/(.*)",
+      "destination": "https://studio.genlayer.com/api/$1"
+    }
+  ]
+}
