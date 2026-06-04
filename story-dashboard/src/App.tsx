@@ -6,12 +6,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import "./index.css";
 
 /* ── Google Fonts ── */
-(() => {
-  const l = document.createElement("link");
-  l.rel = "stylesheet";
-  l.href = "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600&family=Syne:wght@400;600;700;800&family=Fira+Code:wght@300;400;500&display=swap";
-  document.head.appendChild(l);
-})();
+useEffect(() => {
+  if (!document.querySelector('link[href*="Cormorant+Garamond"]')) {
+    const l = document.createElement("link");
+    l.rel = "stylesheet";
+    l.href = "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600&family=Syne:wght@400;600;700;800&family=Fira+Code:wght@300;400;500&display=swap";
+    document.head.appendChild(l);
+  }
+}, []);
 
 /* ── Constants ── */
 const GOLD   = "#c8922a";
