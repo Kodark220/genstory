@@ -1,5 +1,6 @@
 {
   "name": "genstory-root",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "build": "cd story-dashboard && npm run build",
