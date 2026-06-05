@@ -19,7 +19,7 @@ const NETWORKS: Record<string, NetworkConfig> = {
     name: 'Studionet',
     rpc: IS_VERCEL ? 'https://studio.genlayer.com/api' : '/api/studio',
     chainId: 61999,
-    contract: '0x43aC54Cc54196CA831DE26B03b2E608A465BF82a',
+    contract: '0x826025fB8904b8d143DC61354121FCD1f3cC16C1',
   },
   bradbury: {
     name: 'Bradbury Testnet',

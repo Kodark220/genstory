@@ -48,8 +48,8 @@ class AdventureStoryWeaver(gl.Contract):
         story_id = f"story_{self.story_count}"
         actual_stake = stake_amount if stake_amount >= self.min_stake else 0
 
-        # Save creation time using deterministic datetime context
-        created_at = datetime.datetime.now().isoformat()
+        # Save creation time deterministically from the transaction raw message metadata
+        created_at = gl.message_raw["datetime"]
 
         import json as _json
         try:
@@ -191,7 +191,7 @@ class AdventureStoryWeaver(gl.Contract):
 
         # Expiration Check (3 Days = 259,200 seconds)
         created_at_dt = datetime.datetime.fromisoformat(story["created_at"])
-        now = datetime.datetime.now()
+        now = datetime.datetime.fromisoformat(gl.message_raw["datetime"])
         if (now - created_at_dt).total_seconds() >= 259200:
             raise gl.UserError("[EXPECTED] Battle has expired (3-day limit)")
 
@@ -264,7 +264,7 @@ class AdventureStoryWeaver(gl.Contract):
 
         # Expiration Check (3 Days = 259,200 seconds)
         created_at_dt = datetime.datetime.fromisoformat(story["created_at"])
-        now = datetime.datetime.now()
+        now = datetime.datetime.fromisoformat(gl.message_raw["datetime"])
         is_expired = (now - created_at_dt).total_seconds() >= 259200
 
         is_creator = story["creator"] == sender
@@ -343,7 +343,7 @@ class AdventureStoryWeaver(gl.Contract):
 
         # Expiration calculation
         created_at_dt = datetime.datetime.fromisoformat(story["created_at"])
-        now = datetime.datetime.now()
+        now = datetime.datetime.fromisoformat(gl.message_raw["datetime"])
         time_elapsed = int((now - created_at_dt).total_seconds())
         is_expired = time_elapsed >= 259200
 
