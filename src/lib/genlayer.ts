@@ -254,7 +254,7 @@ function encodeWriteRequest(methodName: string, args: unknown[] = [], leaderOnly
   const calldataBytes = encodeCalldata(calldataObj)
   const calldataRlp = rlpEncodeBytes(calldataBytes)
   
-  const leaderOnlyBytes = leaderOnly ? new Uint8Array([1]) : new Uint8Array([])
+  const leaderOnlyBytes = leaderOnly ? new Uint8Array([1]) : new Uint8Array([0])
   const leaderOnlyRlp = rlpEncodeBytes(leaderOnlyBytes)
   
   const listRlp = rlpEncodeList([calldataRlp, leaderOnlyRlp])
@@ -307,19 +307,15 @@ export async function writeContract(
   // Enforce correct GenLayer network
   await ensureCorrectNetwork(eth, network.chainId)
 
-  const isBradbury = network.chainId === 4221
   const txParams: any = {
     from,
     to: network.contract,
     data: calldata.toLowerCase(),
-  }
-
-  // Only apply EVM gas/price overrides on Bradbury where the OKX gas estimation block occurs.
-  // Studionet simulator RPC does not support these parameters and throws an error if they are present.
-  if (isBradbury) {
-    txParams.gas = '0x1e8480'
-    txParams.gasPrice = '0x0'
-    txParams.value = '0x0'
+    // GenLayer does not support eth_estimateGas on any network.
+    // Without explicit gas values, wallets (MetaMask/OKX) hang trying to estimate.
+    gas: '0x1e8480',     // 2,000,000
+    gasPrice: '0x0',
+    value: '0x0',
   }
 
   const txHash = await eth.request({
