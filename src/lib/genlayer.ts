@@ -5,8 +5,6 @@
 import { keccak256 } from 'js-sha3'
 import { getActiveProvider, ensureCorrectNetwork } from './wallet'
 
-const IS_VERCEL = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')
-
 interface NetworkConfig {
   name: string
   rpc: string
@@ -17,13 +15,13 @@ interface NetworkConfig {
 const NETWORKS: Record<string, NetworkConfig> = {
   studionet: {
     name: 'Studionet',
-    rpc: IS_VERCEL ? 'https://studio.genlayer.com/api' : '/api/studio',
+    rpc: '/api/studio',
     chainId: 61999,
     contract: '0x826025fB8904b8d143DC61354121FCD1f3cC16C1',
   },
   bradbury: {
     name: 'Bradbury Testnet',
-    rpc: IS_VERCEL ? 'https://rpc-bradbury.genlayer.com' : '/api/rpc-bradbury',
+    rpc: '/api/rpc-bradbury',
     chainId: 4221,
     contract: '0xBf3b627Bc1ffb7316AF1B1b5Ec2CdD532416D51E',
   },
