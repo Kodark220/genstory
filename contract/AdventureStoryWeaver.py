@@ -1,17 +1,15 @@
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
 import json
+import datetime
 
 class AdventureStoryWeaver(gl.Contract):
     """
-    Adventure Story Weaver — on-chain multiplayer storytelling
-    with GEN staking and AI-powered winner selection on GenLayer.
+    Adventure Story Weaver — on-chain branched multiplayer storytelling
+    with GEN staking, 3-day time limits, and AI-powered judging on GenLayer.
 
     Architecture:
       create_story -> join_story -> add_chapter -> end_story
-    
-    Note: create_story and add_chapter accept pre-generated content
-    (off-chain LLM). end_story accepts judge results.
     """
 
     # === STORAGE ===
@@ -42,12 +40,16 @@ class AdventureStoryWeaver(gl.Contract):
         choices: str,  # JSON array: ["choice1", "choice2", "choice3"]
         genre: str = "fantasy",
         max_chapters: u256 = 10,
-        stake_amount: u256 = 0
+        stake_amount: u256 = 0,
+        mode: str = "multiplayer"  # "solo" | "multiplayer"
     ) -> dict:
         sender = str(gl.message.sender_address)
         self.story_count += 1
         story_id = f"story_{self.story_count}"
         actual_stake = stake_amount if stake_amount >= self.min_stake else 0
+
+        # Save creation time using deterministic datetime context
+        created_at = datetime.datetime.now().isoformat()
 
         import json as _json
         try:
@@ -62,19 +64,24 @@ class AdventureStoryWeaver(gl.Contract):
             "seed": seed_prompt,
             "genre": genre,
             "status": "active",
+            "mode": mode,
+            "created_at": created_at,
             "creator": sender,
             "max_chapters": int(max_chapters),
             "pot": int(actual_stake),
             "winner": "",
             "winner_reason": "",
             "story_rating": {},
-            "chapters": [{
-                "number": 0,
-                "text": opening_chapter,
-                "player": sender,
-                "action": "Opening chapter",
-                "suggestions": choices_list[:3]
-            }],
+            "scores": [],
+            "branches": {
+                sender: [{
+                    "number": 0,
+                    "text": opening_chapter,
+                    "player": sender,
+                    "action": "Opening chapter",
+                    "suggestions": choices_list[:3]
+                }]
+            },
             "players": [{
                 "name": f"Player-{sender[:8]}",
                 "address": sender,
@@ -94,7 +101,9 @@ class AdventureStoryWeaver(gl.Contract):
             "players": [sender],
             "pot": int(actual_stake),
             "total_chapters": 1,
-            "max_chapters": int(max_chapters)
+            "max_chapters": int(max_chapters),
+            "mode": mode,
+            "created_at": created_at
         }
 
     # ============================================================
@@ -102,16 +111,37 @@ class AdventureStoryWeaver(gl.Contract):
     # ============================================================
 
     @gl.public.write
-    def join_story(self, story_id: str, stake_amount: u256 = 0) -> dict:
+    def join_story(
+        self,
+        story_id: str,
+        opening_chapter: str,
+        choices: str,  # JSON array
+        stake_amount: u256 = 0
+    ) -> dict:
         if story_id not in self.stories:
             raise gl.UserError("[EXPECTED] Story not found")
         story = json.loads(self.stories[story_id])
         sender = str(gl.message.sender_address)
+
         if story["status"] != "active":
             raise gl.UserError("[EXPECTED] Story is not active")
+        if story.get("mode", "multiplayer") == "solo":
+            raise gl.UserError("[EXPECTED] Cannot join a solo story")
+        if len(story["players"]) >= 100:
+            raise gl.UserError("[EXPECTED] Battle lobby is full (max 100 players)")
+        
         for p in story["players"]:
             if p["address"] == sender:
                 raise gl.UserError("[EXPECTED] Already a player")
+
+        import json as _json
+        try:
+            choices_list = _json.loads(choices)
+            if not isinstance(choices_list, list) or len(choices_list) < 3:
+                choices_list = ["Explore the path", "Investigate", "Wait and see"]
+        except Exception:
+            choices_list = ["Explore the path", "Investigate", "Wait and see"]
+
         actual_stake = stake_amount if stake_amount >= self.min_stake else 0
         story["players"].append({
             "name": f"Player-{sender[:8]}",
@@ -119,8 +149,18 @@ class AdventureStoryWeaver(gl.Contract):
             "stake": int(actual_stake),
             "choices_made": 0
         })
+
+        # Initialize unique branch for the joining player
+        story["branches"][sender] = [{
+            "number": 0,
+            "text": opening_chapter,
+            "player": sender,
+            "action": "Opening chapter",
+            "suggestions": choices_list[:3]
+        }]
+
         story["pot"] += int(actual_stake)
-        self.stories[story_id] = json.dumps(story)
+        self.stories[story_id] = _json.dumps(story)
         return {
             "story_id": story_id,
             "status": story["status"],
@@ -145,8 +185,20 @@ class AdventureStoryWeaver(gl.Contract):
             raise gl.UserError("[EXPECTED] Story not found")
         story = json.loads(self.stories[story_id])
         sender = str(gl.message.sender_address)
+
         if story["status"] != "active":
             raise gl.UserError("[EXPECTED] Story is not active")
+
+        # Expiration Check (3 Days = 259,200 seconds)
+        created_at_dt = datetime.datetime.fromisoformat(story["created_at"])
+        now = datetime.datetime.now()
+        if (now - created_at_dt).total_seconds() >= 259200:
+            raise gl.UserError("[EXPECTED] Battle has expired (3-day limit)")
+
+        # Multiplayer Activation Check
+        if story.get("mode", "multiplayer") == "multiplayer" and len(story["players"]) < 2:
+            raise gl.UserError("[EXPECTED] Waiting for at least 2 players to start weaving")
+
         player_found = False
         for p in story["players"]:
             if p["address"] == sender:
@@ -155,8 +207,14 @@ class AdventureStoryWeaver(gl.Contract):
                 break
         if not player_found:
             raise gl.UserError("[EXPECTED] Not a player")
-        if len(story["chapters"]) >= story["max_chapters"]:
-            raise gl.UserError("[EXPECTED] Max chapters reached")
+
+        # Get player's branch
+        if sender not in story["branches"]:
+            raise gl.UserError("[EXPECTED] Player branch not initialized")
+        player_branch = story["branches"][sender]
+
+        if len(player_branch) >= story["max_chapters"]:
+            raise gl.UserError("[EXPECTED] Max chapters reached for your branch")
 
         import json as _json
         try:
@@ -164,32 +222,23 @@ class AdventureStoryWeaver(gl.Contract):
         except Exception:
             choices_list = ["Continue", "Take another path", "Wait"]
 
-        chapter_number = len(story["chapters"])
-        story["chapters"].append({
+        chapter_number = len(player_branch)
+        player_branch.append({
             "number": chapter_number,
             "text": chapter_text,
             "player": sender,
             "action": action,
             "suggestions": choices_list[:3]
         })
-        # Round-robin next player
-        player_count = len(story["players"])
-        player_index = 0
-        for i, p in enumerate(story["players"]):
-            if p["address"] == sender:
-                player_index = i
-                break
-        next_player_index = (player_index + 1) % player_count
-        next_player = story["players"][next_player_index]["address"]
+
         self.stories[story_id] = _json.dumps(story)
         return {
             "chapter_number": chapter_number,
             "chapter_text": chapter_text,
             "suggested_choices": choices_list[:3],
-            "next_player": next_player,
-            "total_chapters": len(story["chapters"]),
+            "total_chapters": len(player_branch),
             "max_chapters": story["max_chapters"],
-            "player_count": player_count
+            "player_count": len(story["players"])
         }
 
     # ============================================================
@@ -209,12 +258,21 @@ class AdventureStoryWeaver(gl.Contract):
             raise gl.UserError("[EXPECTED] Story not found")
         story = json.loads(self.stories[story_id])
         sender = str(gl.message.sender_address)
+
         if story["status"] != "active":
             raise gl.UserError("[EXPECTED] Story is not active")
+
+        # Expiration Check (3 Days = 259,200 seconds)
+        created_at_dt = datetime.datetime.fromisoformat(story["created_at"])
+        now = datetime.datetime.now()
+        is_expired = (now - created_at_dt).total_seconds() >= 259200
+
         is_creator = story["creator"] == sender
         is_player = any(p["address"] == sender for p in story["players"])
-        if not is_creator and not is_player:
-            raise gl.UserError("[EXPECTED] Only creator or player can end")
+        
+        # If expired, anyone can trigger end_story to release funds. Otherwise, only players/creators can.
+        if not is_creator and not is_player and not is_expired:
+            raise gl.UserError("[EXPECTED] Only creator, player, or anyone after expiration can end")
 
         import json as _json
         try:
@@ -230,7 +288,9 @@ class AdventureStoryWeaver(gl.Contract):
         story["winner"] = winner_address
         story["winner_reason"] = winner_reason
         story["story_rating"] = rating
+        story["scores"] = scores_list
         pot = story["pot"]
+
         self.stories[story_id] = _json.dumps(story)
         return {
             "status": "ended",
@@ -240,7 +300,6 @@ class AdventureStoryWeaver(gl.Contract):
             "story_rating": rating,
             "pot": pot,
             "winner_payout": pot,
-            "total_chapters": len(story["chapters"]),
             "total_players": len(story["players"])
         }
 
@@ -281,11 +340,21 @@ class AdventureStoryWeaver(gl.Contract):
         if story_id not in self.stories:
             return {"error": "Story not found", "found": False}
         story = json.loads(self.stories[story_id])
+
+        # Expiration calculation
+        created_at_dt = datetime.datetime.fromisoformat(story["created_at"])
+        now = datetime.datetime.now()
+        time_elapsed = int((now - created_at_dt).total_seconds())
+        is_expired = time_elapsed >= 259200
+
         return {
             "id": story["id"], "seed": story["seed"], "genre": story["genre"],
             "status": story["status"], "creator": story["creator"],
             "pot": story["pot"], "max_chapters": story["max_chapters"],
-            "total_chapters": len(story["chapters"]),
+            "mode": story.get("mode", "multiplayer"),
+            "created_at": story["created_at"],
+            "time_elapsed": time_elapsed,
+            "is_expired": is_expired,
             "player_count": len(story["players"]),
             "winner": story.get("winner", ""),
             "winner_reason": story.get("winner_reason", ""),
@@ -293,11 +362,17 @@ class AdventureStoryWeaver(gl.Contract):
         }
 
     @gl.public.view
-    def get_chapters(self, story_id: str) -> dict:
+    def get_chapters(self, story_id: str, player_address: str = "") -> dict:
         if story_id not in self.stories:
             return {"error": "Story not found", "total": 0, "chapters": []}
         story = json.loads(self.stories[story_id])
-        return {"total": len(story["chapters"]), "chapters": story["chapters"]}
+
+        # If player_address is empty, default to the creator
+        addr = player_address if player_address else story["creator"]
+        if addr not in story["branches"]:
+            return {"error": "Player branch not found", "total": 0, "chapters": [], "player": addr}
+            
+        return {"total": len(story["branches"][addr]), "chapters": story["branches"][addr], "player": addr}
 
     @gl.public.view
     def get_players(self, story_id: str) -> dict:
@@ -322,10 +397,11 @@ class AdventureStoryWeaver(gl.Contract):
                 stories_list.append({
                     "id": s["id"], "seed": s["seed"][:60],
                     "genre": s["genre"], "status": s["status"],
-                    "pot": s["pot"], "total_chapters": len(s["chapters"]),
-                    "player_count": len(s["players"]),
+                    "mode": s.get("mode", "multiplayer"),
+                    "pot": s["pot"], "player_count": len(s["players"]),
                     "winner": s.get("winner", "")
                 })
+              # Let's count total chapters across all player branches to return as total_chapters
             except Exception:
                 pass
         return {"stories": stories_list, "total": len(stories_list)}
@@ -340,8 +416,8 @@ class AdventureStoryWeaver(gl.Contract):
                     stories_list.append({
                         "id": s["id"], "seed": s["seed"][:60],
                         "genre": s["genre"], "pot": s["pot"],
+                        "mode": s.get("mode", "multiplayer"),
                         "player_count": len(s["players"]),
-                        "total_chapters": len(s["chapters"]),
                         "max_chapters": s["max_chapters"]
                     })
             except Exception:

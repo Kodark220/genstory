@@ -5,12 +5,24 @@
   "installCommand": "npm install",
   "rewrites": [
     {
-      "source": "/api/rpc-bradbury/(.*)",
-      "destination": "https://rpc-bradbury.genlayer.com/$1"
+      "source": "/api/rpc-bradbury",
+      "destination": "https://rpc-bradbury.genlayer.com"
     },
     {
-      "source": "/api/studio/(.*)",
-      "destination": "https://studio.genlayer.com/api/$1"
+      "source": "/api/rpc-bradbury/:path*",
+      "destination": "https://rpc-bradbury.genlayer.com/:path*"
+    },
+    {
+      "source": "/api/studio",
+      "destination": "https://studio.genlayer.com/api"
+    },
+    {
+      "source": "/api/studio/:path*",
+      "destination": "https://studio.genlayer.com/api/:path*"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
     }
   ]
 }

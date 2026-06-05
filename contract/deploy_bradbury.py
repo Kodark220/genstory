@@ -15,8 +15,8 @@ import os
 import sys
 import time
 
-CONTRACT_PATH = "/mnt/c/Users/OLUWATOYOSI/Desktop/AISTORY/AdventureStoryWeaver.py"
-ADDRESS_FILE = "/mnt/c/Users/OLUWATOYOSI/Desktop/AISTORY/.contract_address"
+CONTRACT_PATH = "C:\\Users\\OLUWATOYOSI\\Desktop\\AISTORY\\contract\\AdventureStoryWeaver.py"
+ADDRESS_FILE = "C:\\Users\\OLUWATOYOSI\\Desktop\\AISTORY\\contract\\.contract_address"
 
 print("╔══════════════════════════════════════════════════╗")
 print("║   Adventure Story Weaver — Bradbury Deploy       ║")

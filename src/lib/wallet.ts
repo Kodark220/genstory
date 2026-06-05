@@ -1,52 +1,85 @@
-// Web3 wallet connector — works with MetaMask, Rabby, and any EIP-1193 provider
-// No dependencies needed — uses window.ethereum
+// Wallet connector — EIP-1193 (MetaMask, Rabby)
+// Zero dependencies. Works with any injected wallet.
 
-const WALLET_KEY = 'genstory_wallet'
+const STORAGE_KEY = 'genstory_wallet'
 
-export function getSavedWallet() {
-  return localStorage.getItem(WALLET_KEY)
+export interface WalletState {
+  address: string
+  chainId: number
 }
 
-export function clearSavedWallet() {
-  localStorage.removeItem(WALLET_KEY)
+let _walletListenerAttached = false
+
+// ── Persistence ──
+
+export function getSavedWallet(): string | null {
+  return localStorage.getItem(STORAGE_KEY)
 }
 
-export function saveWallet(addr) {
-  localStorage.setItem(WALLET_KEY, addr)
+function saveState(addr: string) {
+  localStorage.setItem(STORAGE_KEY, addr)
 }
 
-// Check if an injected wallet is available
-export function hasInjectedWallet() {
-  return typeof window !== 'undefined' && window.ethereum !== undefined
+export function clearWallet() {
+  localStorage.removeItem(STORAGE_KEY)
 }
 
-// Connect via EIP-1193 (MetaMask, Rabby, etc.)
-export async function connectEIP1193() {
-  const eth = window.ethereum
-  if (!eth) throw new Error('No wallet detected')
+// ── Detection ──
 
-  const accounts = await eth.request({ method: 'eth_requestAccounts' })
-  if (!accounts || accounts.length === 0) throw new Error('No accounts')
+export function hasMetaMask(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).ethereum
+}
+
+// ── Connect via EIP-1193 (MetaMask, Rabby, etc.) ──
+
+export async function connectMetaMask(): Promise<WalletState> {
+  const eth = (window as any).ethereum
+  if (!eth) throw new Error('No Ethereum wallet detected (MetaMask / Rabby)')
+
+  const accounts: string[] = await eth.request({ method: 'eth_requestAccounts' })
+  if (!accounts || accounts.length === 0) throw new Error('No accounts available')
 
   const chainId = await eth.request({ method: 'eth_chainId' })
+  const addr = accounts[0].toLowerCase()
 
-  return {
-    address: accounts[0],
-    chainId: parseInt(chainId, 16),
-    provider: eth,
+  saveState(addr)
+
+  // Listen for account changes
+  if (!_walletListenerAttached) {
+    _walletListenerAttached = true
+    eth.on('accountsChanged', (accs: string[]) => {
+      if (accs.length === 0) {
+        clearWallet()
+        window.dispatchEvent(new CustomEvent('wallet-disconnected'))
+      } else {
+        saveState(accs[0].toLowerCase())
+        window.dispatchEvent(new CustomEvent('wallet-changed', { detail: accs[0].toLowerCase() }))
+      }
+    })
+    eth.on('chainChanged', () => window.location.reload())
   }
+
+  return { address: addr, chainId: parseInt(chainId, 16) }
 }
 
-// Send a raw transaction via EIP-1193
-export async function sendTransaction(tx) {
-  const eth = window.ethereum
-  if (!eth) throw new Error('No wallet connected')
-  return await eth.request({
-    method: 'eth_sendTransaction',
-    params: [{
-      from: tx.from,
-      to: tx.to,
-      data: tx.data,
-    }]
-  })
+// ── Restore saved session ──
+
+export function restoreWallet(): WalletState | null {
+  const addr = getSavedWallet()
+  if (!addr) return null
+  return { address: addr, chainId: 0 }
 }
+
+// ── Send transaction (MetaMask only) ──
+
+export async function sendTx(tx: { from: string; to: string; data: string }): Promise<string> {
+  const eth = (window as any).ethereum
+  if (!eth) throw new Error('MetaMask not available for sending transactions')
+
+  const result = await eth.request({
+    method: 'eth_sendTransaction',
+    params: [{ from: tx.from, to: tx.to, data: tx.data }],
+  })
+  return result
+}
+
