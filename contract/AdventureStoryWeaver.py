@@ -336,9 +336,9 @@ class AdventureStoryWeaver(gl.Contract):
     # ============================================================
 
     @gl.public.view
-    def get_story(self, story_id: str) -> dict:
+    def get_story(self, story_id: str) -> str:
         if story_id not in self.stories:
-            return {"error": "Story not found", "found": False}
+            return json.dumps({"error": "Story not found", "found": False})
         story = json.loads(self.stories[story_id])
 
         # Expiration calculation
@@ -347,7 +347,7 @@ class AdventureStoryWeaver(gl.Contract):
         time_elapsed = int((now - created_at_dt).total_seconds())
         is_expired = time_elapsed >= 259200
 
-        return {
+        return json.dumps({
             "id": story["id"], "seed": story["seed"], "genre": story["genre"],
             "status": story["status"], "creator": story["creator"],
             "pot": story["pot"], "max_chapters": story["max_chapters"],
@@ -359,37 +359,37 @@ class AdventureStoryWeaver(gl.Contract):
             "winner": story.get("winner", ""),
             "winner_reason": story.get("winner_reason", ""),
             "found": True
-        }
+        })
 
     @gl.public.view
-    def get_chapters(self, story_id: str, player_address: str = "") -> dict:
+    def get_chapters(self, story_id: str, player_address: str = "") -> str:
         if story_id not in self.stories:
-            return {"error": "Story not found", "total": 0, "chapters": []}
+            return json.dumps({"error": "Story not found", "total": 0, "chapters": []})
         story = json.loads(self.stories[story_id])
 
         # If player_address is empty, default to the creator
         addr = player_address if player_address else story["creator"]
         if addr not in story["branches"]:
-            return {"error": "Player branch not found", "total": 0, "chapters": [], "player": addr}
+            return json.dumps({"error": "Player branch not found", "total": 0, "chapters": [], "player": addr})
             
-        return {"total": len(story["branches"][addr]), "chapters": story["branches"][addr], "player": addr}
+        return json.dumps({"total": len(story["branches"][addr]), "chapters": story["branches"][addr], "player": addr})
 
     @gl.public.view
-    def get_players(self, story_id: str) -> dict:
+    def get_players(self, story_id: str) -> str:
         if story_id not in self.stories:
-            return {"error": "Story not found", "total": 0, "players": []}
+            return json.dumps({"error": "Story not found", "total": 0, "players": []})
         story = json.loads(self.stories[story_id])
-        return {"total": len(story["players"]), "players": story["players"]}
+        return json.dumps({"total": len(story["players"]), "players": story["players"]})
 
     @gl.public.view
-    def get_pot(self, story_id: str) -> dict:
+    def get_pot(self, story_id: str) -> str:
         if story_id not in self.stories:
-            return {"error": "Story not found", "pot": 0}
+            return json.dumps({"error": "Story not found", "pot": 0})
         story = json.loads(self.stories[story_id])
-        return {"pot": story["pot"], "status": story["status"]}
+        return json.dumps({"pot": story["pot"], "status": story["status"]})
 
     @gl.public.view
-    def get_all_stories(self) -> dict:
+    def get_all_stories(self) -> str:
         stories_list = []
         for sid in self.all_story_ids:
             try:
@@ -401,13 +401,12 @@ class AdventureStoryWeaver(gl.Contract):
                     "pot": s["pot"], "player_count": len(s["players"]),
                     "winner": s.get("winner", "")
                 })
-              # Let's count total chapters across all player branches to return as total_chapters
             except Exception:
                 pass
-        return {"stories": stories_list, "total": len(stories_list)}
+        return json.dumps({"stories": stories_list, "total": len(stories_list)})
 
     @gl.public.view
-    def get_active_stories(self) -> dict:
+    def get_active_stories(self) -> str:
         stories_list = []
         for sid in self.all_story_ids:
             try:
@@ -422,10 +421,10 @@ class AdventureStoryWeaver(gl.Contract):
                     })
             except Exception:
                 pass
-        return {"stories": stories_list, "total": len(stories_list)}
+        return json.dumps({"stories": stories_list, "total": len(stories_list)})
 
     @gl.public.view
-    def get_leaderboard(self) -> dict:
+    def get_leaderboard(self) -> str:
         player_stats = {}
         for sid in self.all_story_ids:
             try:
@@ -450,14 +449,14 @@ class AdventureStoryWeaver(gl.Contract):
             key=lambda x: x["wins"],
             reverse=True
         )
-        return {"leaderboard": sorted_players, "total_players": len(sorted_players)}
+        return json.dumps({"leaderboard": sorted_players, "total_players": len(sorted_players)})
 
     @gl.public.view
-    def get_settings(self) -> dict:
-        return {
+    def get_settings(self) -> str:
+        return json.dumps({
             "owner": str(self.owner),
             "min_stake": int(self.min_stake),
             "max_chapters_default": int(self.max_chapters_default),
             "platform_fee_bps": int(self.platform_fee_bps),
             "total_stories": int(self.story_count)
-        }
+        })

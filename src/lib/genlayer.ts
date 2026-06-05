@@ -17,7 +17,7 @@ const NETWORKS: Record<string, NetworkConfig> = {
     name: 'Studionet',
     rpc: '/api/studio',
     chainId: 61999,
-    contract: '0x826025fB8904b8d143DC61354121FCD1f3cC16C1',
+    contract: '0x637e45554dE522Fa5E7323388Fc56964179508ea',
   },
   bradbury: {
     name: 'Bradbury Testnet',
