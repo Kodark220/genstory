@@ -228,6 +228,38 @@ function parseResult(hex: string): unknown {
   if (!hex || hex === '0x') return null
   const raw = hex.startsWith('0x') ? hex.slice(2) : hex
 
+  // Look for JSON object '{' (7b) or JSON array '[' (5b)
+  const braceIndex = raw.indexOf('7b')
+  const bracketIndex = raw.indexOf('5b')
+  
+  let jsonStart = -1
+  if (braceIndex !== -1 && bracketIndex !== -1) {
+    jsonStart = Math.min(braceIndex, bracketIndex)
+  } else {
+    jsonStart = braceIndex !== -1 ? braceIndex : bracketIndex
+  }
+
+  if (jsonStart !== -1) {
+    const jsonHex = raw.slice(jsonStart)
+    try {
+      const jsonStr = jsonHex.match(/.{2}/g)
+        ?.map((b: string) => String.fromCharCode(parseInt(b, 16)))
+        .join('')
+      if (jsonStr) {
+        const isObject = jsonStr.startsWith('{')
+        const endChar = isObject ? '}' : ']'
+        const lastIdx = jsonStr.lastIndexOf(endChar)
+        if (lastIdx !== -1) {
+          const cleanJson = jsonStr.slice(0, lastIdx + 1)
+          return JSON.parse(cleanJson)
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse decoded JSON string:', e)
+    }
+  }
+
+  // Fallback to original offset/length ABI parser if no braces are found
   try {
     const offset = parseInt(raw.slice(0, 64), 16) * 2
     const length = parseInt(raw.slice(offset, offset + 64), 16)
