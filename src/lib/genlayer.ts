@@ -190,7 +190,7 @@ export async function writeContract(
   if (!eth) throw new Error('No active wallet provider available for sending transactions')
 
   // Enforce correct GenLayer network
-  await ensureCorrectNetwork(eth)
+  await ensureCorrectNetwork(eth, network.chainId)
 
   const isBradbury = network.chainId === 4221
   const txParams: any = {

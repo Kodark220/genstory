@@ -74,12 +74,12 @@ export function getActiveProvider() {
 }
 
 // ── Network Switching / Auto-Configuration ──
-export async function ensureCorrectNetwork(provider: any): Promise<void> {
+export async function ensureCorrectNetwork(provider: any, targetChainId: number): Promise<void> {
   if (!provider) return
-  const targetChainIdHex = '0x107d' // 4221 in hex
+  const targetChainIdHex = '0x' + targetChainId.toString(16)
 
   try {
-    // Attempt to switch to GenLayer Bradbury testnet
+    // Attempt to switch to target network
     await provider.request({
       method: 'wallet_switchEthereumChain',
       params: [{ chainId: targetChainIdHex }],
@@ -92,39 +92,40 @@ export async function ensureCorrectNetwork(provider: any): Promise<void> {
       switchError.message?.toLowerCase().includes('switch')
     ) {
       try {
+        const isBradbury = targetChainId === 4221
         await provider.request({
           method: 'wallet_addEthereumChain',
           params: [{
             chainId: targetChainIdHex,
-            chainName: 'GenLayer Bradbury Testnet',
+            chainName: isBradbury ? 'GenLayer Bradbury Testnet' : 'GenLayer Studionet',
             nativeCurrency: {
               name: 'GEN',
               symbol: 'GEN',
               decimals: 18
             },
-            rpcUrls: ['https://rpc-bradbury.genlayer.com'],
-            blockExplorerUrls: ['https://explorer.genlayer.com']
+            rpcUrls: [isBradbury ? 'https://rpc-bradbury.genlayer.com' : 'https://studio.genlayer.com/api'],
+            blockExplorerUrls: isBradbury ? ['https://explorer.genlayer.com'] : []
           }]
         })
       } catch (addError) {
-        console.error('Failed to add GenLayer Bradbury network:', addError)
+        console.error('Failed to add network:', addError)
       }
     } else {
-      console.error('Failed to switch to GenLayer Bradbury network:', switchError)
+      console.error('Failed to switch network:', switchError)
     }
   }
 }
 
 // ── Connect via selected provider ──
-export async function connectProvider(detail: EIP6963ProviderDetail): Promise<WalletState> {
+export async function connectProvider(detail: EIP6963ProviderDetail, targetChainId: number): Promise<WalletState> {
   const provider = detail.provider
   if (!provider) throw new Error(`Provider for ${detail.info.name} is not available`)
 
   const accounts: string[] = await provider.request({ method: 'eth_requestAccounts' })
   if (!accounts || accounts.length === 0) throw new Error('No accounts returned from wallet')
 
-  // Enforce correct GenLayer Bradbury testnet network
-  await ensureCorrectNetwork(provider)
+  // Enforce correct target network
+  await ensureCorrectNetwork(provider, targetChainId)
 
   const chainId = await provider.request({ method: 'eth_chainId' })
   const addr = accounts[0].toLowerCase()
@@ -150,7 +151,7 @@ export async function connectProvider(detail: EIP6963ProviderDetail): Promise<Wa
 }
 
 // ── Connect via legacy/direct window.ethereum or window.okxwallet ──
-export async function connectFallback(type: 'okx' | 'ethereum'): Promise<WalletState> {
+export async function connectFallback(type: 'okx' | 'ethereum', targetChainId: number): Promise<WalletState> {
   const provider = typeof window !== 'undefined'
     ? (type === 'okx' ? (window as any).okxwallet : (window as any).ethereum)
     : null
@@ -160,8 +161,8 @@ export async function connectFallback(type: 'okx' | 'ethereum'): Promise<WalletS
   const accounts: string[] = await provider.request({ method: 'eth_requestAccounts' })
   if (!accounts || accounts.length === 0) throw new Error('No accounts returned from wallet')
 
-  // Enforce correct GenLayer Bradbury testnet network
-  await ensureCorrectNetwork(provider)
+  // Enforce correct target network
+  await ensureCorrectNetwork(provider, targetChainId)
 
   const chainId = await provider.request({ method: 'eth_chainId' })
   const addr = accounts[0].toLowerCase()
@@ -203,25 +204,21 @@ export function clearWallet() {
 }
 
 // ── Send Transaction helper ──
-export async function sendTx(tx: { from: string; to: string; data: string }): Promise<string> {
+export async function sendTx(tx: { from: string; to: string; data: string }, targetChainId: number): Promise<string> {
   const provider = getActiveProvider()
   if (!provider) throw new Error('No active wallet provider available. Please connect first.')
 
-  // Enforce correct GenLayer network
-  await ensureCorrectNetwork(provider)
-
-  const chainIdHex = await provider.request({ method: 'eth_chainId' })
-  const chainId = parseInt(chainIdHex, 16)
+  // Enforce correct target network
+  await ensureCorrectNetwork(provider, targetChainId)
 
   const txParams: any = {
-    from: tx.from,
-    to: tx.to,
+    from: tx.from, 
+    to: tx.to, 
     data: tx.data
   }
 
   // Only apply EVM gas/price overrides on Bradbury where the OKX gas estimation block occurs.
-  // Studionet simulator RPC does not expect or support these overrides.
-  if (chainId === 4221) {
+  if (targetChainId === 4221) {
     txParams.gas = '0x1e8480'
     txParams.gasPrice = '0x0'
     txParams.value = '0x0'

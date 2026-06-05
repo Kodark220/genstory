@@ -303,7 +303,7 @@ const WalletModal = ({ onClose, onConnect }: { onClose: () => void; onConnect: (
     try {
       setError("");
       setConnecting(true);
-      const w = await connectProvider(providerDetail);
+      const w = await connectProvider(providerDetail, getNetwork().chainId);
       onConnect(w);
       onClose();
     } catch (e: unknown) {
@@ -317,7 +317,7 @@ const WalletModal = ({ onClose, onConnect }: { onClose: () => void; onConnect: (
     try {
       setError("");
       setConnecting(true);
-      const w = await connectFallback(type);
+      const w = await connectFallback(type, getNetwork().chainId);
       onConnect(w);
       onClose();
     } catch (e: unknown) {
