@@ -33,9 +33,9 @@ import time
 CONTRACT_PATH = "C:\\Users\\OLUWATOYOSI\\Desktop\\AISTORY\\contract\\AdventureStoryWeaver.py"
 ADDRESS_FILE = "C:\\Users\\OLUWATOYOSI\\Desktop\\AISTORY\\contract\\.contract_address"
 
-print("╔══════════════════════════════════════════════════╗")
-print("║   Adventure Story Weaver — Bradbury Deploy       ║")
-print("╚══════════════════════════════════════════════════╝")
+print("==================================================")
+print("   Adventure Story Weaver - Bradbury Deploy       ")
+print("==================================================")
 
 # Get private key from env or prompt
 private_key = os.environ.get("GENLAYER_PRIVATE_KEY")
@@ -43,22 +43,22 @@ if not private_key:
     private_key = input("  Enter your GenLayer private key: ").strip()
 
 account = Account.from_key(private_key)
-print(f"\n  👤 Deployer: {account.address}")
+print(f"\n  Deployer: {account.address}")
 
 # Create Bradbury client
-print("\n  🔗 Connecting to Bradbury...")
+print("\n  Connecting to Bradbury...")
 client = create_client(
     chain=bradbury_chain,
     account=account
 )
 
 # Read contract source
-print(f"\n  📄 Reading contract...")
+print(f"\n  Reading contract...")
 with open(CONTRACT_PATH, "r") as f:
     contract_source = f.read()
 
 # Deploy
-print("\n  🚀 Deploying...")
+print("\n  Deploying...")
 try:
     result = client.deploy_contract(
         contract_source,
@@ -66,26 +66,26 @@ try:
         account=account,
     )
     tx_hash = result
-    print(f"  ✅ Deploy transaction sent! Hash: {tx_hash}")
-    print("  ⏳ Waiting for receipt (15s)...")
+    print(f"  Deploy transaction sent! Hash: {tx_hash}")
+    print("  Waiting for receipt (15s)...")
     time.sleep(15)
     receipt = client.get_transaction_receipt(tx_hash)
     address = receipt.get("to", "")
     
-    print(f"  ✅ Contract Deployed!")
-    print(f"  📍 Address: {address}")
+    print(f"  Contract Deployed!")
+    print(f"  Address: {address}")
 
     # Save address
     with open(ADDRESS_FILE, "w") as f:
         f.write(address)
-    print(f"\n  💾 Address saved to {ADDRESS_FILE}")
+    print(f"\n  Address saved to {ADDRESS_FILE}")
 
     # Wait for finalization
-    print(f"\n  ⏳ Waiting for finalization (30s)...")
+    print(f"\n  Waiting for finalization (30s)...")
     time.sleep(30)
 
     # Verify via read
-    print(f"\n  🔍 Verifying deployment...")
+    print(f"\n  Verifying deployment...")
     try:
         settings = client.read_contract(
             address=address,
@@ -94,14 +94,14 @@ try:
             account=account,
             raw_return=True
         )
-        print(f"  ✅ Contract verified! Settings: {settings}")
+        print(f"  Contract verified! Settings: {settings}")
     except Exception as e:
-        print(f"  ⚠️  Verification note: {e}")
+        print(f"  Verification note: {e}")
         print(f"  (Bradbury may still be finalizing — try again in 30s)")
 
-    print(f"\n  🎭 Ready!")
-    print(f"  📍 Contract: {address}")
+    print(f"\n  Ready!")
+    print(f"  Contract: {address}")
 
 except Exception as e:
-    print(f"\n  ❌ Deployment failed: {e}")
+    print(f"\n  Deployment failed: {e}")
     sys.exit(1)

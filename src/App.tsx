@@ -786,112 +786,26 @@ const HowItWorks = () => (
 const NetworkSwitcher = ({ onSwitch }: { onSwitch: () => void }) => {
   const network = getNetwork();
   const networks = getNetworks();
-  const [customContract, setCustomContractState] = useState(
-    localStorage.getItem(`custom_contract_${network.id}`) || ""
-  );
-  const [isEditing, setIsEditing] = useState(false);
-
-  // Keep state in sync with network switches
-  useEffect(() => {
-    setCustomContractState(localStorage.getItem(`custom_contract_${network.id}`) || "");
-    setIsEditing(false);
-  }, [network.id]);
-
-  const handleSave = () => {
-    const trimmed = customContract.trim();
-    if (trimmed) {
-      localStorage.setItem(`custom_contract_${network.id}`, trimmed);
-    } else {
-      localStorage.removeItem(`custom_contract_${network.id}`);
-    }
-    setIsEditing(false);
-    onSwitch();
-  };
-
-  const handleReset = () => {
-    localStorage.removeItem(`custom_contract_${network.id}`);
-    setCustomContractState("");
-    setIsEditing(false);
-    onSwitch();
-  };
-
   return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:28 }}>
-      <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap", marginBottom:12 }}>
-        {networks.map(n => (
-          <motion.button
-            key={n.id}
-            whileHover={{ scale:1.05 }}
-            whileTap={{ scale:0.95 }}
-            onClick={() => { setNetwork(n.id); onSwitch(); }}
-            style={{
-              background: n.id === network.id ? `${GOLD}22` : "transparent",
-              border: `1px solid ${n.id === network.id ? GOLD + "66" : BORDER}`,
-              borderRadius:6, padding:"6px 16px", cursor:"pointer",
-              color: n.id === network.id ? GOLD : MUTED,
-              fontFamily:"'Fira Code',monospace", fontSize:11,
-              transition:"all .2s",
-            }}
-          >
-            {n.id === network.id && "● "}{n.name}
-          </motion.button>
-        ))}
-      </div>
-      
-      <div style={{ fontSize:10, color:MUTED, fontFamily:"'Fira Code',monospace", display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", justifyContent:"center", padding:"0 12px" }}>
-        <span>Contract: <strong style={{ color:GOLD }}>{network.contract}</strong></span>
-        {isEditing ? (
-          <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
-            <input 
-              type="text" 
-              value={customContract} 
-              onChange={e => setCustomContractState(e.target.value)} 
-              placeholder="Paste custom deployed contract address (0x...)" 
-              style={{
-                background: DARK,
-                border: `1px solid ${BORDER}`,
-                borderRadius: 4,
-                padding: "4px 10px",
-                color: "#e8e2d9",
-                fontSize: 10,
-                width: 330,
-                outline: "none",
-                fontFamily: "'Fira Code', monospace"
-              }}
-            />
-            <button 
-              onClick={handleSave} 
-              style={{ background:GOLD, border:"none", borderRadius:4, padding:"4px 10px", color:DARK, cursor:"pointer", fontSize:10, fontWeight:700 }}
-            >
-              Save
-            </button>
-            <button 
-              onClick={handleReset} 
-              style={{ background:"none", border:`1px solid ${BORDER}`, borderRadius:4, padding:"4px 10px", color:MUTED, cursor:"pointer", fontSize:10 }}
-            >
-              Reset
-            </button>
-          </div>
-        ) : (
-          <button 
-            onClick={() => setIsEditing(true)} 
-            style={{
-              background:"transparent",
-              border:`1px solid ${BORDER}`,
-              borderRadius:4,
-              padding:"2px 8px",
-              color:GOLD,
-              cursor:"pointer",
-              fontSize:10,
-              transition:"all 0.2s"
-            }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = GOLD }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = BORDER }}
-          >
-            ✏️ Change Address
-          </button>
-        )}
-      </div>
+    <div style={{ display:"flex", gap:8, justifyContent:"center", marginBottom:24, flexWrap:"wrap" }}>
+      {networks.map(n => (
+        <motion.button
+          key={n.id}
+          whileHover={{ scale:1.05 }}
+          whileTap={{ scale:0.95 }}
+          onClick={() => { setNetwork(n.id); onSwitch(); }}
+          style={{
+            background: n.id === network.id ? `${GOLD}22` : "transparent",
+            border: `1px solid ${n.id === network.id ? GOLD + "66" : BORDER}`,
+            borderRadius:6, padding:"6px 16px", cursor:"pointer",
+            color: n.id === network.id ? GOLD : MUTED,
+            fontFamily:"'Fira Code',monospace", fontSize:11,
+            transition:"all .2s",
+          }}
+        >
+          {n.id === network.id && "● "}{n.name}
+        </motion.button>
+      ))}
     </div>
   );
 };
@@ -1043,7 +957,7 @@ const Footer = () => {
         BUILT ON GENLAYER · COMPETITIVE BRANCHED TIMELINES · ON-CHAIN
       </p>
       <p className="font-mono" style={{ fontSize:9, color:`${MUTED}88`, letterSpacing:".06em" }}>
-        Contract: {network.contract} · {network.name}
+        Network: {network.name}
       </p>
     </footer>
   );
