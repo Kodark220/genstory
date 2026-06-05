@@ -207,19 +207,29 @@ export async function sendTx(tx: { from: string; to: string; data: string }): Pr
   const provider = getActiveProvider()
   if (!provider) throw new Error('No active wallet provider available. Please connect first.')
 
-  // Enforce correct GenLayer Bradbury testnet network
+  // Enforce correct GenLayer network
   await ensureCorrectNetwork(provider)
+
+  const chainIdHex = await provider.request({ method: 'eth_chainId' })
+  const chainId = parseInt(chainIdHex, 16)
+
+  const txParams: any = {
+    from: tx.from,
+    to: tx.to,
+    data: tx.data
+  }
+
+  // Only apply EVM gas/price overrides on Bradbury where the OKX gas estimation block occurs.
+  // Studionet simulator RPC does not expect or support these overrides.
+  if (chainId === 4221) {
+    txParams.gas = '0x1e8480'
+    txParams.gasPrice = '0x0'
+    txParams.value = '0x0'
+  }
 
   const result = await provider.request({
     method: 'eth_sendTransaction',
-    params: [{ 
-      from: tx.from, 
-      to: tx.to, 
-      data: tx.data,
-      gas: '0x1e8480', // 2,000,000 (Prevents gas estimation failure blockages)
-      gasPrice: '0x0',
-      value: '0x0'
-    }],
+    params: [txParams],
   })
   return result
 }

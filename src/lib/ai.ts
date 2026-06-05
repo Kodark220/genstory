@@ -14,44 +14,61 @@ interface PlayerInfo {
   name?: string;
 }
 
-// Helper to make API calls to Gemini
+const MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-flash-lite-latest'
+];
+
+// Helper to make API calls to Gemini with fallback cascade
 async function callGemini(systemInstruction: string, prompt: string): Promise<string> {
   if (!API_KEY) {
     throw new Error('API key not configured');
   }
 
-  // We use gemini-2.5-flash as it is extremely fast and has stable availability
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
-  const payload = {
-    contents: [{
-      parts: [{ text: prompt }]
-    }],
-    systemInstruction: {
-      parts: [{ text: systemInstruction }]
-    },
-    generationConfig: {
-      responseMimeType: 'application/json'
+  let lastError = null;
+
+  for (const model of MODELS) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
+      const payload = {
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        systemInstruction: {
+          parts: [{ text: systemInstruction }]
+        },
+        generationConfig: {
+          responseMimeType: 'application/json'
+        }
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Status ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        throw new Error('Empty response');
+      }
+
+      return text;
+    } catch (error: any) {
+      console.warn(`Gemini cascade: Model ${model} failed. Falling back. Error:`, error.message || error);
+      lastError = error;
     }
-  };
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`);
   }
 
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) {
-    throw new Error('Empty response from Gemini');
-  }
-
-  return text;
+  throw new Error(`All Gemini models in cascade failed. Last error: ${lastError?.message || lastError}`);
 }
 
 /* ── 1. Create Story ── */

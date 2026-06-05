@@ -189,19 +189,27 @@ export async function writeContract(
   const eth = getActiveProvider()
   if (!eth) throw new Error('No active wallet provider available for sending transactions')
 
-  // Enforce correct GenLayer Bradbury testnet network
+  // Enforce correct GenLayer network
   await ensureCorrectNetwork(eth)
+
+  const isBradbury = network.chainId === 4221
+  const txParams: any = {
+    from,
+    to: network.contract,
+    data: calldata.toLowerCase(),
+  }
+
+  // Only apply EVM gas/price overrides on Bradbury where the OKX gas estimation block occurs.
+  // Studionet simulator RPC does not support these parameters and throws an error if they are present.
+  if (isBradbury) {
+    txParams.gas = '0x1e8480'
+    txParams.gasPrice = '0x0'
+    txParams.value = '0x0'
+  }
 
   const txHash = await eth.request({
     method: 'eth_sendTransaction',
-    params: [{
-      from,
-      to: network.contract,
-      data: calldata.toLowerCase(),
-      gas: '0x1e8480', // 2,000,000 (Prevents gas estimation failure blockages)
-      gasPrice: '0x0',
-      value: '0x0',
-    }],
+    params: [txParams],
   })
 
   return txHash
