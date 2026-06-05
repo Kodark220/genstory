@@ -73,6 +73,48 @@ export function getActiveProvider() {
   return null
 }
 
+// ── Network Switching / Auto-Configuration ──
+export async function ensureCorrectNetwork(provider: any): Promise<void> {
+  if (!provider) return
+  const targetChainIdHex = '0x107d' // 4221 in hex
+
+  try {
+    // Attempt to switch to GenLayer Bradbury testnet
+    await provider.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: targetChainIdHex }],
+    })
+  } catch (switchError: any) {
+    // Code 4902 indicates that the chain has not been added to the wallet
+    if (
+      switchError.code === 4902 || 
+      switchError.message?.includes('Unrecognized chain') ||
+      switchError.message?.toLowerCase().includes('switch')
+    ) {
+      try {
+        await provider.request({
+          method: 'wallet_addEthereumChain',
+          params: [{
+            chainId: targetChainIdHex,
+            chainName: 'GenLayer Bradbury Testnet',
+            nativeCurrency: {
+              name: 'GEN',
+              symbol: 'GEN',
+              decimals: 18
+            },
+            rpcUrls: ['https://rpc-bradbury.genlayer.com'],
+            blockExplorerUrls: ['https://explorer.genlayer.com']
+          }]
+        })
+      } catch (addError) {
+        console.error('Failed to add GenLayer Bradbury network:', addError)
+      }
+    } else {
+      console.error('Failed to switch to GenLayer Bradbury network:', switchError)
+    }
+  }
+}
+
 // ── Connect via selected provider ──
 export async function connectProvider(detail: EIP6963ProviderDetail): Promise<WalletState> {
   const provider = detail.provider
@@ -80,6 +122,9 @@ export async function connectProvider(detail: EIP6963ProviderDetail): Promise<Wa
 
   const accounts: string[] = await provider.request({ method: 'eth_requestAccounts' })
   if (!accounts || accounts.length === 0) throw new Error('No accounts returned from wallet')
+
+  // Enforce correct GenLayer Bradbury testnet network
+  await ensureCorrectNetwork(provider)
 
   const chainId = await provider.request({ method: 'eth_chainId' })
   const addr = accounts[0].toLowerCase()
@@ -114,6 +159,9 @@ export async function connectFallback(type: 'okx' | 'ethereum'): Promise<WalletS
 
   const accounts: string[] = await provider.request({ method: 'eth_requestAccounts' })
   if (!accounts || accounts.length === 0) throw new Error('No accounts returned from wallet')
+
+  // Enforce correct GenLayer Bradbury testnet network
+  await ensureCorrectNetwork(provider)
 
   const chainId = await provider.request({ method: 'eth_chainId' })
   const addr = accounts[0].toLowerCase()
@@ -159,9 +207,19 @@ export async function sendTx(tx: { from: string; to: string; data: string }): Pr
   const provider = getActiveProvider()
   if (!provider) throw new Error('No active wallet provider available. Please connect first.')
 
+  // Enforce correct GenLayer Bradbury testnet network
+  await ensureCorrectNetwork(provider)
+
   const result = await provider.request({
     method: 'eth_sendTransaction',
-    params: [{ from: tx.from, to: tx.to, data: tx.data }],
+    params: [{ 
+      from: tx.from, 
+      to: tx.to, 
+      data: tx.data,
+      gas: '0x1e8480', // 2,000,000 (Prevents gas estimation failure blockages)
+      gasPrice: '0x0',
+      value: '0x0'
+    }],
   })
   return result
 }

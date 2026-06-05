@@ -3,7 +3,7 @@
 // On Vercel: call RPC directly (no proxy needed for Bradbury, it allows CORS)
 // On local dev: vite.config.ts proxy handles it
 import { keccak256 } from 'js-sha3'
-import { getActiveProvider } from './wallet'
+import { getActiveProvider, ensureCorrectNetwork } from './wallet'
 
 const IS_VERCEL = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')
 
@@ -189,12 +189,18 @@ export async function writeContract(
   const eth = getActiveProvider()
   if (!eth) throw new Error('No active wallet provider available for sending transactions')
 
+  // Enforce correct GenLayer Bradbury testnet network
+  await ensureCorrectNetwork(eth)
+
   const txHash = await eth.request({
     method: 'eth_sendTransaction',
     params: [{
       from,
       to: network.contract,
       data: calldata.toLowerCase(),
+      gas: '0x1e8480', // 2,000,000 (Prevents gas estimation failure blockages)
+      gasPrice: '0x0',
+      value: '0x0',
     }],
   })
 
