@@ -4,8 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { fetchStats, getNetwork, getNetworks, setNetwork, readContract, writeContract } from "@/lib/genlayer";
-import { connectMetaMask, restoreWallet, clearWallet, hasMetaMask } from "@/lib/wallet";
-import type { WalletState } from "@/lib/wallet";
+import { restoreWallet, clearWallet, subscribeProviders, connectProvider, connectFallback } from "@/lib/wallet";
+import type { WalletState, EIP6963ProviderDetail } from "@/lib/wallet";
 import { generateOpeningChapter, generateNextChapter, generateJudgeResult } from "@/lib/ai";
 import "./index.css";
 
@@ -291,13 +291,19 @@ const Stat = ({ value, label, i }: { value: number; label: string; i: number }) 
 const WalletModal = ({ onClose, onConnect }: { onClose: () => void; onConnect: (w: WalletState) => void }) => {
   const [error, setError] = useState("");
   const [connecting, setConnecting] = useState(false);
-  const detected = hasMetaMask();
+  const [providers, setProviders] = useState<EIP6963ProviderDetail[]>([]);
 
-  const handleConnect = async () => {
+  useEffect(() => {
+    return subscribeProviders((newProviders) => {
+      setProviders(newProviders);
+    });
+  }, []);
+
+  const handleConnectProvider = async (providerDetail: EIP6963ProviderDetail) => {
     try {
       setError("");
       setConnecting(true);
-      const w = await connectMetaMask();
+      const w = await connectProvider(providerDetail);
       onConnect(w);
       onClose();
     } catch (e: unknown) {
@@ -306,6 +312,28 @@ const WalletModal = ({ onClose, onConnect }: { onClose: () => void; onConnect: (
       setConnecting(false);
     }
   };
+
+  const handleConnectFallback = async (type: "okx" | "ethereum") => {
+    try {
+      setError("");
+      setConnecting(true);
+      const w = await connectFallback(type);
+      onConnect(w);
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to connect");
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const hasInjectedOkx = typeof window !== "undefined" && !!(window as any).okxwallet;
+  const hasInjectedEth = typeof window !== "undefined" && !!(window as any).ethereum;
+
+  const showOkxFallback = hasInjectedOkx && !providers.some(p => p.info.rdns === "com.okx.wallet");
+  const showMetaMaskFallback = hasInjectedEth && !providers.some(p => p.info.rdns === "io.metamask");
+
+  const noWallets = providers.length === 0 && !hasInjectedOkx && !hasInjectedEth;
 
   return (
     <motion.div
@@ -330,7 +358,7 @@ const WalletModal = ({ onClose, onConnect }: { onClose: () => void; onConnect: (
           >✦</motion.div>
           <h3 className="font-sans" style={{ fontSize:20, fontWeight:700, color:"#f0ead8", marginBottom:8 }}>Connect Wallet</h3>
           <p className="font-display" style={{ fontSize:14, fontStyle:"italic", color:MUTED, lineHeight:1.6 }}>
-            Connect your browser wallet to interact with stories on GenLayer.
+            Select your wallet to connect to GenStory on GenLayer.
           </p>
         </div>
 
@@ -340,38 +368,139 @@ const WalletModal = ({ onClose, onConnect }: { onClose: () => void; onConnect: (
           </div>
         )}
 
-        {detected ? (
-          <motion.div whileHover={{ scale:1.02 }} whileTap={{ scale:0.98 }}>
-            <Button onClick={handleConnect} disabled={connecting} style={{
-              width:"100%", background:`linear-gradient(135deg, ${GOLD}, #a07020)`,
-              color:DARK, fontFamily:"'Syne',sans-serif", fontWeight:700,
-              fontSize:13, letterSpacing:".06em", padding:"14px 24px", border:"none",
-              opacity: connecting ? 0.7 : 1, cursor: connecting ? "wait" : "pointer",
-            }}>
-              {connecting ? "Connecting…" : "🦊 Connect Wallet"}
-            </Button>
-          </motion.div>
-        ) : (
-          <div style={{ textAlign:"center" }}>
-            <div style={{ background:`${GOLD}0d`, border:`1px solid ${BORDER}`, borderRadius:8, padding:"20px 16px", marginBottom:16 }}>
-              <p className="font-display" style={{ fontSize:14, fontStyle:"italic", color:MUTED, lineHeight:1.7, marginBottom:12 }}>
-                No wallet detected. Install a browser wallet to continue.
-              </p>
-            </div>
-            <motion.div whileHover={{ scale:1.02 }} whileTap={{ scale:0.98 }}>
-              <Button
-                onClick={() => window.open("https://metamask.io/download/", "_blank")}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {providers.map((p) => (
+            <motion.div key={p.info.uuid} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+              <button
+                onClick={() => handleConnectProvider(p)}
+                disabled={connecting}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = GOLD; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = BORDER; }}
                 style={{
-                  width:"100%", background:`linear-gradient(135deg, ${GOLD}, #a07020)`,
-                  color:DARK, fontFamily:"'Syne',sans-serif", fontWeight:700,
-                  fontSize:13, letterSpacing:".06em", padding:"14px 24px", border:"none",
+                  width: "100%",
+                  background: `${CARD}`,
+                  border: `1px solid ${BORDER}`,
+                  borderRadius: 8,
+                  padding: "12px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  color: "#f0ead8",
+                  cursor: connecting ? "wait" : "pointer",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  transition: "border-color 0.2s",
                 }}
               >
-                Install MetaMask →
-              </Button>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <img
+                    src={p.info.icon}
+                    alt={p.info.name}
+                    style={{ width: 24, height: 24, borderRadius: 4 }}
+                  />
+                  <span>{p.info.name}</span>
+                </div>
+                <span style={{ color: GOLD, fontSize: 12, fontWeight: 700 }}>Connect →</span>
+              </button>
             </motion.div>
-          </div>
-        )}
+          ))}
+
+          {showOkxFallback && (
+            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+              <button
+                onClick={() => handleConnectFallback("okx")}
+                disabled={connecting}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = GOLD; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = BORDER; }}
+                style={{
+                  width: "100%",
+                  background: `${CARD}`,
+                  border: `1px solid ${BORDER}`,
+                  borderRadius: 8,
+                  padding: "12px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  color: "#f0ead8",
+                  cursor: connecting ? "wait" : "pointer",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  transition: "border-color 0.2s",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <span style={{ fontSize: 20 }}>🖤</span>
+                  <span>OKX Wallet</span>
+                </div>
+                <span style={{ color: GOLD, fontSize: 12, fontWeight: 700 }}>Connect →</span>
+              </button>
+            </motion.div>
+          )}
+
+          {showMetaMaskFallback && (
+            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+              <button
+                onClick={() => handleConnectFallback("ethereum")}
+                disabled={connecting}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = GOLD; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = BORDER; }}
+                style={{
+                  width: "100%",
+                  background: `${CARD}`,
+                  border: `1px solid ${BORDER}`,
+                  borderRadius: 8,
+                  padding: "12px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  color: "#f0ead8",
+                  cursor: connecting ? "wait" : "pointer",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  transition: "border-color 0.2s",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <span style={{ fontSize: 20 }}>🦊</span>
+                  <span>MetaMask / Web3 Wallet</span>
+                </div>
+                <span style={{ color: GOLD, fontSize: 12, fontWeight: 700 }}>Connect →</span>
+              </button>
+            </motion.div>
+          )}
+
+          {noWallets && (
+            <div style={{ textAlign: "center", marginTop: 8 }}>
+              <div style={{ background: `${GOLD}0d`, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "20px 16px", marginBottom: 16 }}>
+                <p className="font-display" style={{ fontSize: 14, fontStyle: "italic", color: MUTED, lineHeight: 1.7, marginBottom: 12 }}>
+                  No compatible Web3 wallets detected in your browser. Install OKX Wallet or MetaMask to proceed.
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <Button
+                  onClick={() => window.open("https://www.okx.com/web3", "_blank")}
+                  style={{
+                    flex: 1, background: `linear-gradient(135deg, ${GOLD}, #a07020)`,
+                    color: DARK, fontFamily: "'Syne',sans-serif", fontWeight: 700,
+                    fontSize: 11, padding: "10px 16px", border: "none",
+                  }}
+                >
+                  OKX Wallet
+                </Button>
+                <Button
+                  onClick={() => window.open("https://metamask.io/download/", "_blank")}
+                  style={{
+                    flex: 1, background: `${CARD}`, border: `1px solid ${BORDER}`,
+                    color: "#f0ead8", fontFamily: "'Syne',sans-serif", fontWeight: 700,
+                    fontSize: 11, padding: "10px 16px",
+                  }}
+                >
+                  MetaMask
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
 
         <p className="font-mono" style={{ fontSize:9, color:`${MUTED}88`, textTransform:"uppercase", textAlign:"center", marginTop:16, letterSpacing:".04em" }}>
           Supports MetaMask, Rabby, Coinbase Wallet & other EIP-1193 wallets
