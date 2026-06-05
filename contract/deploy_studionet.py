@@ -51,9 +51,30 @@ try:
     print("  Waiting for receipt (5s)...")
     time.sleep(5)
     receipt = client.get_transaction_receipt(tx_hash)
-    contract_address = receipt.get("contract_address", "")
+    contract_address = receipt.get("to", "")
     print(f"  Contract Deployed!")
     print(f"  Address: {contract_address}")
+
+    if contract_address:
+        # Save to .contract_address
+        with open("C:\\Users\\OLUWATOYOSI\\Desktop\\AISTORY\\contract\\.contract_address", "w") as f_addr:
+            f_addr.write(contract_address)
+        
+        # Update src/lib/genlayer.ts
+        genlayer_ts_path = "C:\\Users\\OLUWATOYOSI\\Desktop\\AISTORY\\src\\lib\\genlayer.ts"
+        with open(genlayer_ts_path, "r") as f_ts:
+            content = f_ts.read()
+        
+        import re
+        new_content = re.sub(
+            r"(studionet:\s*\{[^}]*?contract:\s*')[0x0-9a-fA-F]+(')",
+            rf"\g<1>{contract_address}\g<2>",
+            content,
+            flags=re.DOTALL
+        )
+        with open(genlayer_ts_path, "w") as f_ts:
+            f_ts.write(new_content)
+        print("  Successfully updated genlayer.ts with new contract address.")
 
 except Exception as e:
     print(f"\n  Deployment failed: {e}")
