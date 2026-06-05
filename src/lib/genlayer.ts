@@ -72,48 +72,7 @@ export function getNetworks() {
   return Object.entries(NETWORKS).map(([id, n]) => ({ id, ...n }))
 }
 
-/* ── ABI encoding ── */
 
-function encodeUint256(value: number | bigint | string): string {
-  return BigInt(value).toString(16).padStart(64, '0')
-}
-
-function encodeStringBytes(str: string): { head: string; length: number } {
-  const encoded = new TextEncoder().encode(str)
-  const length = encodeUint256(encoded.length)
-  const hexData = Array.from(encoded).map((b: number) => b.toString(16).padStart(2, '0')).join('')
-  const paddedData = encoded.length > 0 ? hexData.padEnd(Math.ceil(hexData.length / 64) * 64, '0') : ''
-  return {
-    head: length + paddedData,
-    length: 32 + (encoded.length > 0 ? Math.ceil(encoded.length / 32) * 32 : 0),
-  }
-}
-
-function abiEncode(types: string[], values: (string | number | bigint)[]): string {
-  if (types.length !== values.length) throw new Error('Type/value count mismatch')
-
-  const headSize = types.length * 32 // bytes
-  let headParts: string[] = []
-  let tailParts: string[] = []
-  let tailOffset = headSize
-
-  for (let i = 0; i < types.length; i++) {
-    const type = types[i]
-    const value = values[i]
-
-    if (type === 'uint256') {
-      headParts.push(encodeUint256(value))
-    } else if (type === 'string') {
-      // Dynamic type — head contains offset, tail contains data
-      headParts.push(encodeUint256(tailOffset))
-      const encoded = encodeStringBytes(String(value))
-      tailParts.push(encoded.head)
-      tailOffset += encoded.length
-    }
-  }
-
-  return headParts.join('') + tailParts.join('')
-}
 
 /* ── RPC ── */
 
@@ -287,6 +246,21 @@ function encodeReadRequest(methodName: string, args: unknown[] = []): string {
   return '0x' + Array.from(listRlp).map((b: number) => b.toString(16).padStart(2, '0')).join('')
 }
 
+function encodeWriteRequest(methodName: string, args: unknown[] = [], leaderOnly = false): string {
+  const calldataObj: Record<string, unknown> = { method: methodName }
+  if (args.length > 0) {
+    calldataObj.args = args
+  }
+  const calldataBytes = encodeCalldata(calldataObj)
+  const calldataRlp = rlpEncodeBytes(calldataBytes)
+  
+  const leaderOnlyBytes = leaderOnly ? new Uint8Array([1]) : new Uint8Array([])
+  const leaderOnlyRlp = rlpEncodeBytes(leaderOnlyBytes)
+  
+  const listRlp = rlpEncodeList([calldataRlp, leaderOnlyRlp])
+  return '0x' + Array.from(listRlp).map((b: number) => b.toString(16).padStart(2, '0')).join('')
+}
+
 /* ── Read contract ── */
 
 export async function readContract(functionName: string, args: (string | number | bigint)[] = []): Promise<unknown> {
@@ -325,7 +299,7 @@ export async function writeContract(
     throw new Error(`${functionName} expects ${fn.params.length} args, got ${args.length}`)
   }
 
-  const calldata = fn.selector + abiEncode(fn.params, args)
+  const calldata = encodeWriteRequest(functionName, args, false)
 
   const eth = getActiveProvider()
   if (!eth) throw new Error('No active wallet provider available for sending transactions')
