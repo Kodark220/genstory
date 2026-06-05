@@ -39,6 +39,42 @@ async function callGemini(systemInstruction: string, prompt: string): Promise<st
   return data.text;
 }
 
+// Robust JSON extractor: handles markdown fences, trailing text, etc.
+function extractJSON(raw: string): unknown {
+  let str = raw.trim();
+  // Strip markdown code fences
+  str = str.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
+  // Find the first '{' or '['
+  const braceIdx = str.indexOf('{');
+  const bracketIdx = str.indexOf('[');
+  let startIdx = -1;
+  let openChar = '{';
+  let closeChar = '}';
+  if (braceIdx !== -1 && (bracketIdx === -1 || braceIdx < bracketIdx)) {
+    startIdx = braceIdx; openChar = '{'; closeChar = '}';
+  } else if (bracketIdx !== -1) {
+    startIdx = bracketIdx; openChar = '['; closeChar = ']';
+  }
+  if (startIdx === -1) return JSON.parse(str); // fallback
+  // Walk forward to find the matching closing brace/bracket
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = startIdx; i < str.length; i++) {
+    const ch = str[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\' && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === openChar) depth++;
+    else if (ch === closeChar) { depth--; if (depth === 0) return JSON.parse(str.slice(startIdx, i + 1)); }
+  }
+  // Fallback: try from start to last occurrence of closeChar
+  const lastIdx = str.lastIndexOf(closeChar);
+  if (lastIdx > startIdx) return JSON.parse(str.slice(startIdx, lastIdx + 1));
+  return JSON.parse(str);
+}
+
 /* ── 1. Create Story ── */
 
 export async function generateOpeningChapter(genre: string, seed: string): Promise<{ chapter: string; choices: string[] }> {
@@ -55,7 +91,7 @@ Seed Prompt: ${seed}`;
 
   try {
     const jsonStr = await callGemini(systemInstruction, prompt);
-    const parsed = JSON.parse(jsonStr.trim());
+    const parsed = extractJSON(jsonStr) as any;
     if (parsed.chapter && Array.isArray(parsed.choices)) {
       return {
         chapter: parsed.chapter,
@@ -93,7 +129,7 @@ Output raw JSON only. Do not wrap in markdown block formatting (no \`\`\`json).`
 
   try {
     const jsonStr = await callGemini(systemInstruction, prompt);
-    const parsed = JSON.parse(jsonStr.trim());
+    const parsed = extractJSON(jsonStr) as any;
     if (parsed.chapter && Array.isArray(parsed.choices)) {
       return {
         chapter: parsed.chapter,
@@ -148,7 +184,7 @@ Output raw JSON only. Do not wrap in markdown block formatting (no \`\`\`json).`
 
   try {
     const jsonStr = await callGemini(systemInstruction, prompt);
-    const parsed = JSON.parse(jsonStr.trim());
+    const parsed = extractJSON(jsonStr) as any;
     if (parsed.winner && Array.isArray(parsed.scores) && parsed.rating) {
       // Clean and ensure winner is one of the players
       let winnerAddr = parsed.winner.trim().toLowerCase();
