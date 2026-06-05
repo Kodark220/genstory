@@ -33,17 +33,6 @@ function computeSelector(signature: string): string {
   return '0x' + keccak256(signature).slice(0, 8)
 }
 
-// Read selectors
-const READ_SIGNATURES: Record<string, { selector: string; params: string[] }> = {
-  get_settings: { selector: computeSelector('get_settings()'), params: [] },
-  get_story: { selector: computeSelector('get_story(string)'), params: ['string'] },
-  get_all_stories: { selector: computeSelector('get_all_stories()'), params: [] },
-  get_active_stories: { selector: computeSelector('get_active_stories()'), params: [] },
-  get_leaderboard: { selector: computeSelector('get_leaderboard()'), params: [] },
-  get_chapters: { selector: computeSelector('get_chapters(string,string)'), params: ['string', 'string'] },
-  get_players: { selector: computeSelector('get_players(string)'), params: ['string'] },
-  get_pot: { selector: computeSelector('get_pot(string)'), params: ['string'] },
-}
 
 // Write selectors
 const WRITE_SIGNATURES: Record<string, { selector: string; params: string[] }> = {
@@ -76,20 +65,11 @@ export function setNetwork(net: string): boolean {
 }
 
 export function getNetwork() {
-  const base = NETWORKS[currentNetwork]
-  const custom = typeof window !== 'undefined' ? localStorage.getItem(`custom_contract_${currentNetwork}`) : null
-  return {
-    ...base,
-    id: currentNetwork,
-    contract: custom || base.contract
-  }
+  return { ...NETWORKS[currentNetwork], id: currentNetwork }
 }
 
 export function getNetworks() {
-  return Object.entries(NETWORKS).map(([id, n]) => {
-    const custom = typeof window !== 'undefined' ? localStorage.getItem(`custom_contract_${id}`) : null
-    return { id, ...n, contract: custom || n.contract }
-  })
+  return Object.entries(NETWORKS).map(([id, n]) => ({ id, ...n }))
 }
 
 /* ── ABI encoding ── */
@@ -154,20 +134,173 @@ async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
   return data.result
 }
 
+/* ── GenVM Calldata Encoding (CBOR/RLP) ── */
+
+const TYPE_SPECIAL = 0
+const TYPE_PINT = 1
+const TYPE_NINT = 2
+const TYPE_STR = 4
+const TYPE_ARR = 5
+const TYPE_MAP = 6
+
+const SPECIAL_NULL = (0 << 3) | TYPE_SPECIAL
+const SPECIAL_FALSE = (1 << 3) | TYPE_SPECIAL
+const SPECIAL_TRUE = (2 << 3) | TYPE_SPECIAL
+
+function appendUleb128(val: number | bigint): number[] {
+  let i = BigInt(val)
+  const mem: number[] = []
+  if (i === 0n) {
+    mem.push(0)
+  }
+  while (i > 0n) {
+    let cur = Number(i & 0x7Fn)
+    i = i >> 7n
+    if (i > 0n) {
+      cur |= 0x80
+    }
+    mem.push(cur)
+  }
+  return mem
+}
+
+function encodeCalldata(val: unknown): Uint8Array {
+  const mem: number[] = []
+
+  function impl(b: unknown) {
+    if (b === null || b === undefined) {
+      mem.push(SPECIAL_NULL)
+    } else if (b === true) {
+      mem.push(SPECIAL_TRUE)
+    } else if (b === false) {
+      mem.push(SPECIAL_FALSE)
+    } else if (typeof b === 'number' || typeof b === 'bigint') {
+      let val = BigInt(b)
+      if (val >= 0n) {
+        val = (val << 3n) | BigInt(TYPE_PINT)
+        mem.push(...appendUleb128(val))
+      } else {
+        val = -val - 1n
+        val = (val << 3n) | BigInt(TYPE_NINT)
+        mem.push(...appendUleb128(val))
+      }
+    } else if (typeof b === 'string') {
+      const bytes = new TextEncoder().encode(b)
+      const lb = (bytes.length << 3) | TYPE_STR
+      mem.push(...appendUleb128(lb))
+      mem.push(...Array.from(bytes))
+    } else if (Array.isArray(b)) {
+      const lb = (b.length << 3) | TYPE_ARR
+      mem.push(...appendUleb128(lb))
+      for (const item of b) {
+        impl(item)
+      }
+    } else if (typeof b === 'object') {
+      const keys = Object.keys(b as Record<string, unknown>).sort()
+      const le = (keys.length << 3) | TYPE_MAP
+      mem.push(...appendUleb128(le))
+      const encoder = new TextEncoder()
+      for (const k of keys) {
+        const kBytes = encoder.encode(k)
+        mem.push(...appendUleb128(kBytes.length))
+        mem.push(...Array.from(kBytes))
+        impl((b as Record<string, unknown>)[k])
+      }
+    } else {
+      throw new Error('Unsupported type: ' + typeof b)
+    }
+  }
+
+  impl(val)
+  return new Uint8Array(mem)
+}
+
+function numberToBytes(num: number): Uint8Array {
+  const hex = num.toString(16)
+  const padded = hex.length % 2 === 0 ? hex : '0' + hex
+  const bytes = new Uint8Array(padded.length / 2)
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(padded.slice(i * 2, i * 2 + 2), 16)
+  }
+  return bytes
+}
+
+function rlpEncodeBytes(bytes: Uint8Array): Uint8Array {
+  if (bytes.length === 1 && bytes[0] < 0x80) {
+    return bytes
+  }
+  if (bytes.length < 56) {
+    const header = 0x80 + bytes.length
+    const res = new Uint8Array(1 + bytes.length)
+    res[0] = header
+    res.set(bytes, 1)
+    return res
+  }
+  const lenBytes = numberToBytes(bytes.length)
+  const header = 0xb7 + lenBytes.length
+  const res = new Uint8Array(1 + lenBytes.length + bytes.length)
+  res[0] = header
+  res.set(lenBytes, 1)
+  res.set(bytes, 1 + lenBytes.length)
+  return res
+}
+
+function rlpEncodeList(items: Uint8Array[]): Uint8Array {
+  let totalLength = 0
+  for (const item of items) {
+    totalLength += item.length
+  }
+  if (totalLength < 56) {
+    const header = 0xc0 + totalLength
+    const res = new Uint8Array(1 + totalLength)
+    res[0] = header
+    let offset = 1
+    for (const item of items) {
+      res.set(item, offset)
+      offset += item.length
+    }
+    return res
+  }
+  const lenBytes = numberToBytes(totalLength)
+  const header = 0xf7 + lenBytes.length
+  const res = new Uint8Array(1 + lenBytes.length + totalLength)
+  res[0] = header
+  res.set(lenBytes, 1)
+  let offset = 1 + lenBytes.length
+  for (const item of items) {
+    res.set(item, offset)
+    offset += item.length
+  }
+  return res
+}
+
+function encodeReadRequest(methodName: string, args: unknown[] = []): string {
+  const calldataObj: Record<string, unknown> = { method: methodName }
+  if (args.length > 0) {
+    calldataObj.args = args
+  }
+  const calldataBytes = encodeCalldata(calldataObj)
+  const calldataRlp = rlpEncodeBytes(calldataBytes)
+  const dummyRlp = rlpEncodeBytes(new Uint8Array([0]))
+  const listRlp = rlpEncodeList([calldataRlp, dummyRlp])
+  
+  return '0x' + Array.from(listRlp).map((b: number) => b.toString(16).padStart(2, '0')).join('')
+}
+
 /* ── Read contract ── */
 
 export async function readContract(functionName: string, args: (string | number | bigint)[] = []): Promise<unknown> {
   const network = getNetwork()
-  const fn = READ_SIGNATURES[functionName]
-  if (!fn) throw new Error(`Unknown read function: ${functionName}`)
-
-  const calldata = fn.selector + abiEncode(fn.params, args)
+  const calldata = encodeReadRequest(functionName, args)
 
   try {
-    const result = await rpcCall('eth_call', [{
+    const result = await rpcCall('gen_call', [{
+      type: 'read',
       to: network.contract,
-      data: calldata.toLowerCase(),
-    }, 'latest'])
+      from: '0x0000000000000000000000000000000000000000',
+      data: calldata,
+      transaction_hash_variant: 'latest-nonfinal'
+    }])
 
     return parseResult(result as string)
   } catch (e: unknown) {
@@ -176,6 +309,7 @@ export async function readContract(functionName: string, args: (string | number 
     return null
   }
 }
+
 
 /* ── Write contract (via MetaMask) ── */
 
