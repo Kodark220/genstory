@@ -109,9 +109,11 @@ export async function ensureCorrectNetwork(provider: any, targetChainId: number)
         })
       } catch (addError) {
         console.error('Failed to add network:', addError)
+        throw new Error('Please add the GenLayer network to your wallet to continue.')
       }
     } else {
       console.error('Failed to switch network:', switchError)
+      throw new Error('Please switch your wallet to the GenLayer network to continue.')
     }
   }
 }
