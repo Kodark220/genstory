@@ -1,7 +1,6 @@
 // AI service to generate story chapters, actions, and judge results using Gemini API
 // with a high-quality local narrative generator fallback.
 
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 
 interface StoryChapter {
   text: string;
@@ -14,61 +13,30 @@ interface PlayerInfo {
   name?: string;
 }
 
-const MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-flash-lite-latest'
-];
-
-// Helper to make API calls to Gemini with fallback cascade
+// Helper to make API calls to the secure Vercel Serverless Function
 async function callGemini(systemInstruction: string, prompt: string): Promise<string> {
-  if (!API_KEY) {
-    throw new Error('API key not configured');
+  const url = '/api/generate';
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ systemInstruction, prompt })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`API error: Status ${response.status} - ${errorText}`);
   }
 
-  let lastError = null;
-
-  for (const model of MODELS) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
-      const payload = {
-        contents: [{
-          parts: [{ text: prompt }]
-        }],
-        systemInstruction: {
-          parts: [{ text: systemInstruction }]
-        },
-        generationConfig: {
-          responseMimeType: 'application/json'
-        }
-      };
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Status ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) {
-        throw new Error('Empty response');
-      }
-
-      return text;
-    } catch (error: any) {
-      console.warn(`Gemini cascade: Model ${model} failed. Falling back. Error:`, error.message || error);
-      lastError = error;
-    }
+  const data = await response.json();
+  if (data.error) {
+    throw new Error(data.error);
   }
 
-  throw new Error(`All Gemini models in cascade failed. Last error: ${lastError?.message || lastError}`);
+  if (!data.text) {
+    throw new Error('Empty response from AI server');
+  }
+
+  return data.text;
 }
 
 /* ── 1. Create Story ── */
