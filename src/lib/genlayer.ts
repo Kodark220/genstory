@@ -78,11 +78,20 @@ export function setNetwork(net: string): boolean {
 }
 
 export function getNetwork() {
-  return { ...NETWORKS[currentNetwork], id: currentNetwork }
+  const base = NETWORKS[currentNetwork]
+  const custom = typeof window !== 'undefined' ? localStorage.getItem(`custom_contract_${currentNetwork}`) : null
+  return {
+    ...base,
+    id: currentNetwork,
+    contract: custom || base.contract
+  }
 }
 
 export function getNetworks() {
-  return Object.entries(NETWORKS).map(([id, n]) => ({ id, ...n }))
+  return Object.entries(NETWORKS).map(([id, n]) => {
+    const custom = typeof window !== 'undefined' ? localStorage.getItem(`custom_contract_${id}`) : null
+    return { id, ...n, contract: custom || n.contract }
+  })
 }
 
 /* ── ABI encoding ── */
@@ -131,7 +140,7 @@ function abiEncode(types: string[], values: (string | number | bigint)[]): strin
 /* ── RPC ── */
 
 async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
-  const network = NETWORKS[currentNetwork]
+  const network = getNetwork()
   const res = await fetch(network.rpc, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -150,7 +159,7 @@ async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
 /* ── Read contract ── */
 
 export async function readContract(functionName: string, args: (string | number | bigint)[] = []): Promise<unknown> {
-  const network = NETWORKS[currentNetwork]
+  const network = getNetwork()
   const fn = READ_SIGNATURES[functionName]
   if (!fn) throw new Error(`Unknown read function: ${functionName}`)
 
@@ -177,7 +186,7 @@ export async function writeContract(
   args: (string | number | bigint)[],
   from: string,
 ): Promise<string> {
-  const network = NETWORKS[currentNetwork]
+  const network = getNetwork()
   const fn = WRITE_SIGNATURES[functionName]
   if (!fn) throw new Error(`Unknown write function: ${functionName}`)
   if (fn.params.length !== args.length) {
