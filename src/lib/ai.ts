@@ -20,8 +20,8 @@ async function callGemini(systemInstruction: string, prompt: string): Promise<st
     throw new Error('API key not configured');
   }
 
-  // We use gemini-1.5-flash as it is extremely fast and has stable free-tier availability
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+  // We use gemini-2.5-flash as it is extremely fast and has stable availability
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
   const payload = {
     contents: [{
       parts: [{ text: prompt }]

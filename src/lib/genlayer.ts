@@ -19,7 +19,7 @@ const NETWORKS: Record<string, NetworkConfig> = {
     name: 'Studionet',
     rpc: IS_VERCEL ? 'https://studio.genlayer.com/api' : '/api/studio',
     chainId: 61999,
-    contract: '0x8836b45b95718dFEEb2bDd464201fD4A01195C23',
+    contract: '0x43aC54Cc54196CA831DE26B03b2E608A465BF82a',
   },
   bradbury: {
     name: 'Bradbury Testnet',
@@ -67,7 +67,7 @@ const WRITE_SIGNATURES: Record<string, { selector: string; params: string[] }> =
   },
 }
 
-let currentNetwork = 'bradbury'
+let currentNetwork = 'studionet'
 
 export function setNetwork(net: string): boolean {
   if (NETWORKS[net]) {
